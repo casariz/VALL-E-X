@@ -177,4 +177,7 @@ pyrightconfig.json
 whisper/
 checkpoints/
 
+# Audios generados
+output/
+
 # End of https://www.toptal.com/developers/gitignore/api/python
