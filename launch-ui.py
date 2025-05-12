@@ -30,14 +30,6 @@ print(f"You are using Python version {platform.python_version()}")
 if sys.version_info[0] < 3 or sys.version_info[1] < 7:
     print("The Python version is too low and may cause problems")
 
-# Configuración temprana de pathlib para compatibilidad Windows
-if platform.system().lower() == 'windows':
-    temp = pathlib.PosixPath
-    pathlib.PosixPath = pathlib.WindowsPath
-else:
-    temp = pathlib.WindowsPath
-    pathlib.WindowsPath = pathlib.PosixPath
-
 # Configuración de entorno antes de cualquier import
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 

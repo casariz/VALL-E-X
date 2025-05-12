@@ -6,15 +6,6 @@ import logging
 import langid
 langid.set_languages(['en', 'zh', 'ja'])
 
-import pathlib
-import platform
-if platform.system().lower() == 'windows':
-    temp = pathlib.PosixPath
-    pathlib.PosixPath = pathlib.WindowsPath
-else:
-    temp = pathlib.WindowsPath
-    pathlib.WindowsPath = pathlib.PosixPath
-
 import numpy as np
 from data.tokenizer import (
     AudioTokenizer,
