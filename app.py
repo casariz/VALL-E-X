@@ -269,7 +269,7 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
     return message, (24000, samples.squeeze(0).cpu().numpy())
 
 # Endpoint API principal
-@app.post("/infer_audio/")
+@app.post("/api/infer_audio/")
 async def infer_audio_endpoint(
     upload_audio_prompt: UploadFile = File(None)
 ):
