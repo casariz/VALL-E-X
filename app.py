@@ -341,10 +341,10 @@ async def infer_audio_endpoint(
         logging.exception("Error durante la inferencia de audio:")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# Punto de entrada para ejecutar la aplicación
-if __name__ == "__main__":
-    formatter = "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
-    logging.basicConfig(format=formatter, level=logging.INFO)
+# # Punto de entrada para ejecutar la aplicación
+# if __name__ == "__main__":
+#     formatter = "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
+#     logging.basicConfig(format=formatter, level=logging.INFO)
     
-    # Ejecutar la aplicación con uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+#     # Ejecutar la aplicación con uvicorn
+#     uvicorn.run(app, host="127.0.0.1", port=8000)
