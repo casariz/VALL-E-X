@@ -32,4 +32,4 @@ RUN wget -O ./whisper/medium.pt \
 # Exponer el puerto y ejecutar la aplicación
 EXPOSE 8000
 
-CMD python -m uvicorn app:app --host 0.0.0.0 --port 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
