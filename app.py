@@ -6,6 +6,7 @@ import sys
 import multiprocessing
 import tempfile
 import time
+import pathlib
 
 import soundfile as sf
 import torch
@@ -89,6 +90,16 @@ model = VALLE(
     prepend_bos=True,
     num_quantizers=NUM_QUANTIZERS,
 )
+
+# === AGREGAR PARCHES PARA SISTEMAS UNIX ===
+import pathlib
+import sys
+
+# Monkey-patch para resolver error de WindowsPath en Linux/Mac
+if sys.platform != "win32":
+    pathlib.WindowsPath = pathlib.PosixPath
+# =========================================
+
 checkpoint_path = PurePath("./checkpoints/vallex-checkpoint.pt")
 checkpoint = torch.load(str(checkpoint_path), map_location='cpu', weights_only=False)
 missing_keys, unexpected_keys = model.load_state_dict(
