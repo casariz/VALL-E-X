@@ -13,6 +13,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import PurePath
 import uvicorn
 
 print(f"default encoding is {sys.getdefaultencoding()},file system encoding is {sys.getfilesystemencoding()}")
@@ -88,7 +89,8 @@ model = VALLE(
     prepend_bos=True,
     num_quantizers=NUM_QUANTIZERS,
 )
-checkpoint = torch.load("./checkpoints/vallex-checkpoint.pt", map_location='cpu', weights_only=False)
+checkpoint_path = PurePath("./checkpoints/vallex-checkpoint.pt")
+checkpoint = torch.load(str(checkpoint_path), map_location='cpu', weights_only=False)
 missing_keys, unexpected_keys = model.load_state_dict(
     checkpoint["model"], strict=True
 )
