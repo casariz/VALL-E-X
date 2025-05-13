@@ -132,11 +132,16 @@ app = FastAPI()
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],  # URL of your Angular app
+    allow_origins=["http://localhost:4200", "https://pronunciapp.me", "https://www.pronunciapp.me"],  # Include your production URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Endpoint simple para prueba de conexión y CORS
+@app.get("/api/ping")
+async def ping():
+    return {"status": "ok", "message": "API is running and CORS is configured correctly"}
 
 # Directorio para archivos de salida
 output_dir = "output"
