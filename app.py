@@ -143,9 +143,10 @@ app.add_middleware(
 async def ping():
     return {"status": "ok", "message": "API is running and CORS is configured correctly"}
 
-# Directorio para archivos de salida
-output_dir = "output"
+# Directorio para archivos de salida - usa una ruta absoluta
+output_dir = os.path.abspath("output")
 os.makedirs(output_dir, exist_ok=True)
+print(f"Directorio de salida: {output_dir}")  # Para depuración
 
 # Montar directorio de salida para servir archivos estáticos
 app.mount("/audio", StaticFiles(directory=output_dir), name="audio")
@@ -315,12 +316,22 @@ async def infer_audio_endpoint(
         )
         out_sr, out_audio = audio_out_tuple
         
-        # Guardar el audio generado
+        # Guardar el audio generado - usa una ruta absoluta explícita
         timestamp = int(time.time())
         output_filename = f"generated_{timestamp}.wav"
         output_filepath = os.path.join(output_dir, output_filename)
+        
+        # Imprime la ruta para depuración
+        print(f"Guardando audio en: {output_filepath}")
+        
         sf.write(output_filepath, out_audio, out_sr)
-        logging.info(f"Audio generado guardado en: {output_filepath}")
+        
+         # Verifica que el archivo se haya creado correctamente
+        if os.path.exists(output_filepath):
+            print(f"✅ Archivo creado correctamente: {output_filepath}")
+            print(f"Tamaño del archivo: {os.path.getsize(output_filepath)} bytes")
+        else:
+            print(f"❌ ERROR: El archivo no se creó: {output_filepath}")
         
         # Convertir el audio a base64 para enviarlo directamente en la respuesta
         import base64
@@ -334,11 +345,13 @@ async def infer_audio_endpoint(
         # Codificar el contenido del buffer a base64
         audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
         
-        # Devolver URL del audio y el audio en base64
-        audio_url = f"/audio/{output_filename}"
+        # Devuelve URL absoluta (con dominio) para el audio
+        base_url = "https://pronunciapp.me"
+        audio_url = f"{base_url}/audio/{output_filename}"
+        
         return JSONResponse(content={
             "text_output": text_output,
-            "audio_url": audio_url,
+            "audio_url": audio_url,  # URL absoluta
             "audio_data": audio_base64
         })
         
@@ -346,6 +359,15 @@ async def infer_audio_endpoint(
         logging.exception("Error durante la inferencia de audio:")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
+@app.get("/api/test-audio-access/{filename}")
+async def test_audio_access(filename: str):
+    """Endpoint de prueba para verificar el acceso a archivos de audio"""
+    filepath = os.path.join(output_dir, filename)
+    if os.path.exists(filepath):
+        return {"status": "exists", "path": filepath, "size": os.path.getsize(filepath)}
+    else:
+        return {"status": "not_found", "path": filepath}
 # # Punto de entrada para ejecutar la aplicación
 # if __name__ == "__main__":
 #     formatter = "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
