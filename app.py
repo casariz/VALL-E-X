@@ -132,7 +132,7 @@ app = FastAPI()
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "https://pronunciapp.me", "https://www.pronunciapp.me"],  # Include your production URLs
+    allow_origins=["https://pronunciapp.me", "https://www.pronunciapp.me"],  # Include your production URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
