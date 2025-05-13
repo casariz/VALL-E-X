@@ -127,7 +127,7 @@ except Exception as e:
         "\n manually download model and put it to {} .".format(os.getcwd() + "\whisper"))
 
 # Inicializar FastAPI
-app = FastAPI(prefix="/api")
+app = FastAPI()
 
 # Configuración de CORS
 app.add_middleware(
@@ -139,7 +139,7 @@ app.add_middleware(
 )
 
 # Endpoint simple para prueba de conexión y CORS
-@app.get("/ping")
+@app.get("/api/ping")
 async def ping():
     return {"status": "ok", "message": "API is running and CORS is configured correctly"}
 
@@ -274,7 +274,7 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
     return message, (24000, samples.squeeze(0).cpu().numpy())
 
 # Endpoint API principal
-@app.post("/infer_audio/")
+@app.post("/api/infer_audio/")
 async def infer_audio_endpoint(
     upload_audio_prompt: UploadFile = File(None)
 ):
