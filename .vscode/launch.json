@@ -11,7 +11,7 @@
             "request": "launch",
             "module": "uvicorn",
             "args": [
-                "launch-ui:app",
+                "app:app",
                 "--reload"
             ],
             "jinja": true

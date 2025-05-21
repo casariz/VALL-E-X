@@ -10,7 +10,7 @@ import pathlib
 
 import soundfile as sf
 import torch
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form # Added Form
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -132,7 +132,7 @@ app = FastAPI()
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://pronunciapp.me", "https://www.pronunciapp.me"],  # Include your production URLs
+    allow_origins=["https://pronunciapp.me", "https://www.pronunciapp.me", "http://localhost:4200"],  # Include your production URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -277,6 +277,7 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
 # Endpoint API principal
 @app.post("/api/infer_audio/")
 async def infer_audio_endpoint(
+    text_input: str = Form(...), # Added text_input as a required form field
     upload_audio_prompt: UploadFile = File(None)
 ):
     try:
@@ -318,7 +319,11 @@ async def infer_audio_endpoint(
         
         # Guardar el audio generado - usa una ruta absoluta explícita
         timestamp = int(time.time())
-        output_filename = f"generated_{timestamp}.wav"
+        # Sanitize text_input for filename (optional but recommended)
+        sanitized_text_input = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in text_input).rstrip()
+        if not sanitized_text_input: # Handle empty or fully sanitized string
+            sanitized_text_input = "audio"
+        output_filename = f"{sanitized_text_input}_{timestamp}.wav"
         output_filepath = os.path.join(output_dir, output_filename)
         
         # Imprime la ruta para depuración
