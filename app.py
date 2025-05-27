@@ -167,7 +167,6 @@ def transcribe_one(model, audio_path):
         text_pr += "."
     return lang, text_pr
 
-# Función para crear un prompt a partir de audio
 def make_prompt(name, wav, sr, save=True):
     global whisper_model
     whisper_model.to(device)
@@ -182,6 +181,9 @@ def make_prompt(name, wav, sr, save=True):
     assert wav.ndim and wav.size(0) == 1
     torchaudio.save(f"./prompts/{name}.wav", wav, sr)
     lang, text = transcribe_one(whisper_model, f"prompts/{name}.wav")
+    if lang not in lang2token:
+        print(f"Idioma detectado no soportado: {lang}, usando 'en' por defecto.")
+        lang = "en"
     lang_token = lang2token[lang]
     text = lang_token + text + lang_token
     with open(f"./prompts/{name}.txt", 'w', encoding='utf-8') as f:
@@ -210,8 +212,10 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
         wav_pr = wav_pr.unsqueeze(0)
     assert wav_pr.ndim and wav_pr.size(0) == 1
 
+    lang_warning = None  # <-- Añadido para advertencia
+
     if transcript_content == "":
-        text_pr, lang_pr = make_prompt('dummy', wav_pr, sr, save=False)
+        text_pr, lang_pr, lang_warning = make_prompt('dummy', wav_pr, sr, save=False)
     else:
         lang_pr = langid.classify(str(transcript_content))[0]
         lang_token = lang2token[lang_pr]
@@ -272,9 +276,8 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
     torch.cuda.empty_cache()
 
     message = f"text prompt: {text_pr}\nsythesized text: {text}"
-    return message, (24000, samples.squeeze(0).cpu().numpy())
+    return message, (24000, samples.squeeze(0).cpu().numpy()), lang_warning  # <-- Devuelve advertencia
 
-# Endpoint API principal
 @app.post("/api/infer_audio/")
 async def infer_audio_endpoint(
     text_input: str = Form(...), # Added text_input as a required form field
@@ -307,7 +310,7 @@ async def infer_audio_endpoint(
         logging.info("Archivo temporal de entrada eliminado.")
         
         # Llamar a la función de inferencia
-        text_output, audio_out_tuple = infer_from_audio(
+        text_output, audio_out_tuple, lang_warning = infer_from_audio(
             "",  # Texto vacío - el modelo generará una respuesta basada en el audio
             language,
             accent,
@@ -354,11 +357,15 @@ async def infer_audio_endpoint(
         base_url = "https://pronunciapp.me"
         audio_url = f"{base_url}/audio/{output_filename}"
         
-        return JSONResponse(content={
+        response_content = {
             "text_output": text_output,
             "audio_url": audio_url,  # URL absoluta
             "audio_data": audio_base64
-        })
+        }
+        if lang_warning:
+            response_content["warning"] = lang_warning  # <-- Añade advertencia si existe
+        
+        return JSONResponse(content=response_content)
         
     except Exception as e:
         logging.exception("Error durante la inferencia de audio:")
