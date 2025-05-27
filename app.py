@@ -181,6 +181,7 @@ def make_prompt(name, wav, sr, save=True):
     assert wav.ndim and wav.size(0) == 1
     torchaudio.save(f"./prompts/{name}.wav", wav, sr)
     lang, text = transcribe_one(whisper_model, f"prompts/{name}.wav")
+    lang_warning = None  # <-- Añadido para advertencia
     if lang not in lang2token:
         print(f"Idioma detectado no soportado: {lang}, usando 'en' por defecto.")
         lang = "en"
@@ -194,7 +195,7 @@ def make_prompt(name, wav, sr, save=True):
 
     whisper_model.cpu()
     torch.cuda.empty_cache()
-    return text, lang
+    return text, lang, lang_warning 
 
 # Función principal de inferencia desde audio
 @torch.no_grad()
