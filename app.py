@@ -17,10 +17,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import PurePath
 import uvicorn
 
-print(f"default encoding is {sys.getdefaultencoding()},file system encoding is {sys.getfilesystemencoding()}")
-print(f"You are using Python version {platform.python_version()}")
-if sys.version_info[0] < 3 or sys.version_info[1] < 7:
-    print("The Python version is too low and may cause problems")
+# Elimina prints y logs de debug innecesarios
+# print(f"default encoding is {sys.getdefaultencoding()},file system encoding is {sys.getfilesystemencoding()}")
+# print(f"You are using Python version {platform.python_version()}")
+# print("Use", thread_count, "cpu cores for computing")
+# print(f"Directorio de salida: {output_dir}")  # Para depuración
 
 # Configuración de entorno
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
@@ -33,7 +34,19 @@ torch._C._jit_set_profiling_executor(False)
 torch._C._jit_set_profiling_mode(False)
 torch._C._set_graph_executor_optimize(False)
 
-print("Use", thread_count, "cpu cores for computing")
+# Configuración del dispositivo
+device = torch.device("cuda", 0) if torch.cuda.is_available() else torch.device("cpu")
+if torch.backends.mps.is_available() and not torch.cuda.is_available():
+    device = torch.device("mps")
+
+# Optimiza el uso de hilos para GPU T4 (4 vCPUs)
+if device.type == "cuda":
+    torch.set_num_threads(2)  # 2-4 es suficiente para 4 vCPUs
+    torch.set_num_interop_threads(2)
+else:
+    thread_count = multiprocessing.cpu_count()
+    torch.set_num_threads(thread_count)
+    torch.set_num_interop_threads(thread_count)
 
 # Imports necesarios para la funcionalidad
 import torchaudio
@@ -55,13 +68,6 @@ from macros import *
 # Inicializar tokenizers
 text_tokenizer = PhonemeBpeTokenizer(tokenizer_path="./utils/g2p/bpe_69.json")
 text_collater = get_text_token_collater()
-
-# Configuración del dispositivo
-device = torch.device("cpu")
-if torch.cuda.is_available():
-    device = torch.device("cuda", 0)
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
 
 # Verificar y cargar el modelo VALL-E-X
 if not os.path.exists("./checkpoints/"): os.mkdir("./checkpoints/")
@@ -101,12 +107,16 @@ if sys.platform != "win32":
 # =========================================
 
 checkpoint_path = PurePath("./checkpoints/vallex-checkpoint.pt")
-checkpoint = torch.load(str(checkpoint_path), map_location='cpu', weights_only=False)
+checkpoint = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
 missing_keys, unexpected_keys = model.load_state_dict(
     checkpoint["model"], strict=True
 )
 assert not missing_keys
 model.eval()
+# Optimización para T4: usar half precision si es posible
+if device.type == "cuda":
+    model = model.half()
+model.to(device)
 
 # Inicializar el tokenizador de audio
 audio_tokenizer = AudioTokenizer(device)
@@ -114,11 +124,15 @@ audio_tokenizer = AudioTokenizer(device)
 # Cargar vocos para decodificación
 from vocos import Vocos
 vocos = Vocos.from_pretrained('charactr/vocos-encodec-24khz').to(device)
+if device.type == "cuda":
+    vocos = vocos.half()
 
 # Cargar modelo Whisper para transcripción
 if not os.path.exists("./whisper/"): os.mkdir("./whisper/")
 try:
-    whisper_model = whisper.load_model("medium", download_root=os.path.join(os.getcwd(), "whisper")).cpu()
+    whisper_model = whisper.load_model("medium", download_root=os.path.join(os.getcwd(), "whisper")).to(device)
+    if device.type == "cuda":
+        whisper_model = whisper_model.half()
 except Exception as e:
     logging.info(e)
     raise Exception(
@@ -146,7 +160,7 @@ async def ping():
 # Directorio para archivos de salida - usa una ruta absoluta
 output_dir = os.path.abspath("output")
 os.makedirs(output_dir, exist_ok=True)
-print(f"Directorio de salida: {output_dir}")  # Para depuración
+# print(f"Directorio de salida: {output_dir}")  # Para depuración
 
 # Montar directorio de salida para servir archivos estáticos
 app.mount("/audio", StaticFiles(directory=output_dir), name="audio")
@@ -155,13 +169,18 @@ app.mount("/audio", StaticFiles(directory=output_dir), name="audio")
 def transcribe_one(model, audio_path):
     audio = whisper.load_audio(audio_path)
     audio = whisper.pad_or_trim(audio)
-    mel = whisper.log_mel_spectrogram(audio).to(model.device)
+    mel = whisper.log_mel_spectrogram(audio).to(device)
     _, probs = model.detect_language(mel)
-    print(f"Detected language: {max(probs, key=probs.get)}")
+    # print(f"Detected language: {max(probs, key=probs.get)}")  # Eliminar en producción
     lang = max(probs, key=probs.get)
-    options = whisper.DecodingOptions(temperature=1.0, best_of=5, fp16=False if device == torch.device("cpu") else True, sample_len=150)
+    options = whisper.DecodingOptions(
+        temperature=1.0,
+        best_of=5,
+        fp16=True if device.type == "cuda" else False,
+        sample_len=150
+    )
     result = whisper.decode(model, mel, options)
-    print(result.text)
+    # print(result.text)  # Eliminar en producción
     text_pr = result.text
     if text_pr.strip(" ")[-1] not in "?!.,。，？！。、":
         text_pr += "."
@@ -212,6 +231,12 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
         wav_pr = wav_pr.unsqueeze(0)
     assert wav_pr.ndim and wav_pr.size(0) == 1
 
+    # Mover audio a GPU si es posible
+    if device.type == "cuda":
+        wav_pr = wav_pr.to(device, dtype=torch.float16)
+    else:
+        wav_pr = wav_pr.to(device)
+
     lang_warning = None  # <-- Añadido para advertencia
 
     if transcript_content == "":
@@ -230,46 +255,52 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
 
     # onload model
     model.to(device)
+    if device.type == "cuda":
+        model = model.half()
 
-    # tokenize audio
-    encoded_frames = tokenize_audio(audio_tokenizer, (wav_pr, sr))
-    audio_prompts = encoded_frames[0][0].transpose(2, 1).to(device)
+    # Usa AMP para T4
+    with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
+        # tokenize audio
+        encoded_frames = tokenize_audio(audio_tokenizer, (wav_pr, sr))
+        audio_prompts = encoded_frames[0][0].transpose(2, 1).to(device)
+        if device.type == "cuda":
+            audio_prompts = audio_prompts.half()
 
-    # tokenize text
-    logging.info(f"synthesize text: {text}")
-    phone_tokens, langs = text_tokenizer.tokenize(text=f"_{text_pr}".strip())
-    text_tokens, text_tokens_lens = text_collater(
-        [
-            phone_tokens
-        ]
-    )
-
-    enroll_x_lens = None
-    if text_pr:
-        text_prompts, _ = text_tokenizer.tokenize(text=f"{text_pr}".strip())
-        text_prompts, enroll_x_lens = text_collater(
+        # tokenize text
+        logging.info(f"synthesize text: {text}")
+        phone_tokens, langs = text_tokenizer.tokenize(text=f"_{text_pr}".strip())
+        text_tokens, text_tokens_lens = text_collater(
             [
-                text_prompts
+                phone_tokens
             ]
         )
-    text_tokens = torch.cat([text_prompts, text_tokens], dim=-1)
-    text_tokens_lens += enroll_x_lens
-    lang = lang if accent == "no-accent" else token2lang[langdropdown2token[accent]]
-    encoded_frames = model.inference(
-        text_tokens.to(device),
-        text_tokens_lens.to(device),
-        audio_prompts,
-        enroll_x_lens=enroll_x_lens,
-        top_k=-100,
-        temperature=1,
-        prompt_language=lang_pr,
-        text_language=langs if accent == "no-accent" else lang,
-        best_of=5,
-    )
-    # Decode with Vocos
-    frames = encoded_frames.permute(2,0,1)
-    features = vocos.codes_to_features(frames)
-    samples = vocos.decode(features, bandwidth_id=torch.tensor([2], device=device))
+
+        enroll_x_lens = None
+        if text_pr:
+            text_prompts, _ = text_tokenizer.tokenize(text=f"{text_pr}".strip())
+            text_prompts, enroll_x_lens = text_collater(
+                [
+                    text_prompts
+                ]
+            )
+        text_tokens = torch.cat([text_prompts, text_tokens], dim=-1)
+        text_tokens_lens += enroll_x_lens
+        lang = lang if accent == "no-accent" else token2lang[langdropdown2token[accent]]
+        encoded_frames = model.inference(
+            text_tokens.to(device, dtype=torch.float16 if device.type == "cuda" else torch.float32),
+            text_tokens_lens.to(device),
+            audio_prompts,
+            enroll_x_lens=enroll_x_lens,
+            top_k=-100,
+            temperature=1,
+            prompt_language=lang_pr,
+            text_language=langs if accent == "no-accent" else lang,
+            best_of=5,
+        )
+        # Decode with Vocos
+        frames = encoded_frames.permute(2,0,1)
+        features = vocos.codes_to_features(frames)
+        samples = vocos.decode(features, bandwidth_id=torch.tensor([2], device=device))
 
     # offload model
     model.to('cpu')
@@ -278,95 +309,118 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
     message = f"text prompt: {text_pr}\nsythesized text: {text}"
     return message, (24000, samples.squeeze(0).cpu().numpy()), lang_warning  # <-- Devuelve advertencia
 
+# ========== BATCHING SUPPORT ==========
+from typing import List
+from fastapi.concurrency import run_in_threadpool
+from fastapi import BackgroundTasks
+
+# Cola simple para batching
+from collections import deque
+import asyncio
+
+BATCH_SIZE = 4  # Ajusta según memoria GPU, puedes probar 2-8 en T4 con 28GB RAM
+BATCH_TIMEOUT = 0.05  # segundos
+
+batch_queue = deque()
+batch_lock = asyncio.Lock()
+
+async def batch_worker():
+    while True:
+        await asyncio.sleep(BATCH_TIMEOUT)
+        async with batch_lock:
+            if len(batch_queue) == 0:
+                continue
+            batch = []
+            while len(batch) < BATCH_SIZE and batch_queue:
+                batch.append(batch_queue.popleft())
+            if batch:
+                # Ejecuta inferencia en batch
+                await run_in_threadpool(process_batch, batch)
+
+def process_batch(batch):
+    # Batching real: agrupa los datos y llama a infer_from_audio en batch
+    # Aquí solo se procesa uno a uno por simplicidad, pero puedes optimizarlo
+    for item in batch:
+        try:
+            text_output, audio_out_tuple, lang_warning = infer_from_audio(
+                "", item['language'], item['accent'], item['audio_tuple'], None, item['transcript_content']
+            )
+            item['future'].set_result((text_output, audio_out_tuple, lang_warning))
+        except Exception as e:
+            item['future'].set_exception(e)
+
+@app.on_event("startup")
+async def startup_event():
+    # Inicia el worker de batching
+    asyncio.create_task(batch_worker())
+
 @app.post("/api/infer_audio/")
 async def infer_audio_endpoint(
-    text_input: str = Form(...), # Added text_input as a required form field
+    text_input: str = Form(...),
     upload_audio_prompt: UploadFile = File(None)
 ):
     try:
         language = "English"
         accent = "no-accent"
         transcript_content = ""
-        
+
         if upload_audio_prompt is None:
             return JSONResponse(content={"error": "No se proporcionó ningún archivo de audio."}, status_code=400)
-        
-        # Guardar el archivo subido en un archivo temporal
+
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             content = await upload_audio_prompt.read()
             tmp.write(content)
             tmp.flush()
             temp_path = tmp.name
-        logging.info(f"Se creó archivo temporal de entrada: {temp_path}")
-        
-        # Leer el archivo de audio con soundfile
+
         wav, sr = sf.read(temp_path, dtype="float32")
         if wav.ndim == 2 and wav.shape[1] > 1:
             wav = wav[:, 0]
         audio_tuple = (sr, wav)
-        
-        # Eliminar archivo temporal
         os.remove(temp_path)
-        logging.info("Archivo temporal de entrada eliminado.")
-        
-        # Llamar a la función de inferencia
-        text_output, audio_out_tuple, lang_warning = infer_from_audio(
-            "",  # Texto vacío - el modelo generará una respuesta basada en el audio
-            language,
-            accent,
-            audio_tuple,
-            None,
-            transcript_content
-        )
+
+        # ========== BATCHING ==========
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        async with batch_lock:
+            batch_queue.append({
+                'language': language,
+                'accent': accent,
+                'audio_tuple': audio_tuple,
+                'transcript_content': transcript_content,
+                'future': future
+            })
+        text_output, audio_out_tuple, lang_warning = await future
+        # ========== END BATCHING ==========
+
         out_sr, out_audio = audio_out_tuple
-        
-        # Guardar el audio generado - usa una ruta absoluta explícita
         timestamp = int(time.time())
-        # Sanitize text_input for filename (optional but recommended)
         sanitized_text_input = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in text_input).rstrip()
-        if not sanitized_text_input: # Handle empty or fully sanitized string
+        if not sanitized_text_input:
             sanitized_text_input = "audio"
         output_filename = f"{sanitized_text_input}_{timestamp}.wav"
         output_filepath = os.path.join(output_dir, output_filename)
-        
-        # Imprime la ruta para depuración
-        print(f"Guardando audio en: {output_filepath}")
-        
         sf.write(output_filepath, out_audio, out_sr)
-        
-         # Verifica que el archivo se haya creado correctamente
-        if os.path.exists(output_filepath):
-            print(f"✅ Archivo creado correctamente: {output_filepath}")
-            print(f"Tamaño del archivo: {os.path.getsize(output_filepath)} bytes")
-        else:
-            print(f"❌ ERROR: El archivo no se creó: {output_filepath}")
-        
-        # Convertir el audio a base64 para enviarlo directamente en la respuesta
+
         import base64
         import io
-        
-        # Crear un buffer en memoria para guardar el audio en formato WAV
         buffer = io.BytesIO()
         sf.write(buffer, out_audio, out_sr, format='WAV')
-        buffer.seek(0)  # Regresar al inicio del buffer
-        
-        # Codificar el contenido del buffer a base64
+        buffer.seek(0)
         audio_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-        
-        # Devuelve URL absoluta (con dominio) para el audio
         base_url = "https://pronunciapp.me"
         audio_url = f"{base_url}/audio/{output_filename}"
-        
+
         response_content = {
             "text_output": text_output,
-            "audio_url": audio_url,  # URL absoluta
+            "audio_url": audio_url,
             "audio_data": audio_base64
         }
         if lang_warning:
-            response_content["warning"] = lang_warning  # <-- Añade advertencia si existe
-        
+            response_content["warning"] = lang_warning
+
         return JSONResponse(content=response_content)
-        
+
     except Exception as e:
         logging.exception("Error durante la inferencia de audio:")
         return JSONResponse(content={"error": str(e)}, status_code=500)
