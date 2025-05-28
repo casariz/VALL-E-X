@@ -8,6 +8,18 @@ import tempfile
 import time
 import pathlib
 
+# === Configuración de hilos de PyTorch: DEBE IR ANTES DE CUALQUIER IMPORT DE TORCH O TORCHAUDIO ===
+import multiprocessing
+if "CUDA_VISIBLE_DEVICES" in os.environ and os.environ["CUDA_VISIBLE_DEVICES"]:
+    # Asume que usarás GPU
+    torch_num_threads = 2
+else:
+    torch_num_threads = multiprocessing.cpu_count()
+import torch
+torch.set_num_threads(torch_num_threads)
+torch.set_num_interop_threads(torch_num_threads)
+# =================================================================================================
+
 import soundfile as sf
 import torch
 from fastapi import FastAPI, UploadFile, File, Form # Added Form
