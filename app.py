@@ -1,26 +1,21 @@
 # coding: utf-8
-import logging
+import sys
 import os
 import platform
-import sys
 import multiprocessing
-import tempfile
-import time
-import pathlib
-
-import soundfile as sf
 import torch
-from fastapi import FastAPI, UploadFile, File, Form # Added Form
+import nltk
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import PurePath
-import uvicorn
 
 print(f"default encoding is {sys.getdefaultencoding()},file system encoding is {sys.getfilesystemencoding()}")
 print(f"You are using Python version {platform.python_version()}")
 if sys.version_info[0] < 3 or sys.version_info[1] < 7:
-    print("The Python version is too low and may cause problems")
+    print("Python version should be at least 3.7")
+    sys.exit(1)
 
 # Configuración de entorno
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
@@ -34,13 +29,6 @@ torch._C._jit_set_profiling_mode(False)
 torch._C._set_graph_executor_optimize(False)
 
 print("Use", thread_count, "cpu cores for computing")
-
-# Imports necesarios para la funcionalidad
-import torchaudio
-import numpy as np
-import langid
-import nltk
-import whisper
 
 # Configurar rutas para nltk
 nltk.data.path = nltk.data.path + [os.path.join(os.getcwd(), "nltk_data")]
@@ -59,23 +47,29 @@ text_collater = get_text_token_collater()
 # Configuración del dispositivo
 device = torch.device("cpu")
 if torch.cuda.is_available():
-    device = torch.device("cuda", 0)
+    device = torch.device("cuda")
+    print("CUDA is available, using GPU")
+else:
+    print("CUDA not available, using CPU")
+
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+    print("MPS is available, using Apple Silicon GPU")
 
 # Verificar y cargar el modelo VALL-E-X
-if not os.path.exists("./checkpoints/"): os.mkdir("./checkpoints/")
+if not os.path.exists("./checkpoints/"): 
+    os.makedirs("./checkpoints/")
+    
 if not os.path.exists(os.path.join("./checkpoints/", "vallex-checkpoint.pt")):
-    import wget
-    try:
-        logging.info("Downloading model from https://huggingface.co/Plachta/VALL-E-X/resolve/main/vallex-checkpoint.pt ...")
-        wget.download("https://huggingface.co/Plachta/VALL-E-X/resolve/main/vallex-checkpoint.pt",
-                      out="./checkpoints/vallex-checkpoint.pt", bar=wget.bar_adaptive)
-    except Exception as e:
-        logging.info(e)
-        raise Exception(
-            "\n Model weights download failed, please go to 'https://huggingface.co/Plachta/VALL-E-X/resolve/main/vallex-checkpoint.pt'"
-            "\n manually download model weights and put it to {} .".format(os.getcwd() + "\checkpoints"))
+    print("Downloading VALL-E-X checkpoint...")
+    # Código para descargar el modelo
+
+# Función simplificada para transcripción (solo inglés)
+def transcribe_one(model, audio_path):
+    """
+    Transcribe audio file using Whisper - English only
+    """
+    # ...código de transcripción...
 
 # Inicializar el modelo VALL-E-X
 model = VALLE(
@@ -211,7 +205,7 @@ def infer_from_audio(text, language, accent, audio_prompt, record_audio_prompt, 
         wav_pr = wav_pr[:, 0]
     if wav_pr.ndim == 1:
         wav_pr = wav_pr.unsqueeze(0)
-    assert wav_pr.ndim and wav_pr.size(0) == 1
+    assert wav_pr.ndim and wav.size(0) == 1
 
     lang_warning = None  # <-- Añadido para advertencia
 

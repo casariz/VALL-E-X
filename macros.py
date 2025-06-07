@@ -1,39 +1,21 @@
+# filepath: d:\Programación\VALL-E-X\macros.py
+
+# Configuración del modelo VALL-E-X optimizada para inglés únicamente
 NUM_LAYERS = 12
 NUM_HEAD = 16
 N_DIM = 1024
-PREFIX_MODE = 1
 NUM_QUANTIZERS = 8
 SAMPLE_RATE = 24000
 
-lang2token = {
-    'zh': "[ZH]",
-    'ja': "[JA]",
-    "en": "[EN]",
-    'mix': "",
-}
+# Configuración de idioma simplificada para inglés
+LANGUAGE = "en"
+LANGUAGE_TOKEN = "[EN]"
 
-lang2code = {
-    'zh': 0,
-    'ja': 1,
-    "en": 2,
-}
+# Configuración del modelo
+NUM_TEXT_TOKENS = 2048
+NUM_AUDIO_TOKENS = 1024
+NUM_MEL_BINS = 100
 
-token2lang = {
-    '[ZH]': "zh",
-    '[JA]': "ja",
-    "[EN]": "en",
-    "": "mix"
-}
-
-code2lang = {
-    0: 'zh',
-    1: 'ja',
-    2: "en",
-}
-
-langdropdown2token = {
-    'English': "[EN]",
-    '中文': "[ZH]",
-    '日本語': "[JA]",
-    'Mix': "",
-}
+# Imports simplificados de sklearn
+import sklearn.metrics as metrics
+from sklearn.model_selection import train_test_split
