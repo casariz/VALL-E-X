@@ -265,5 +265,9 @@ Esta implementación está optimizada específicamente para **inglés**:
 
 ---
 
+## 🙏 Agradecimientos
+
+Este proyecto es una implementación basada en el excelente trabajo de [VALL-E-X](https://github.com/Plachtaa/VALL-E-X) desarrollado por Plachtaa, el cual a su vez está basado en el trabajo de investigación VALL-E-X de Microsoft Research. Se agradece a ambos equipos por su contribución al desarrollo de tecnologías de síntesis de voz de código abierto.
+
 **Nota**: Este proyecto implementa el paper "Neural Codec Language Models are Zero-Shot Text to Speech Synthesizers" con mejoras específicas para producción y soporte optimizado para inglés.
 
